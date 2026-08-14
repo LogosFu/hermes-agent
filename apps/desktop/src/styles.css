@@ -163,7 +163,12 @@
     inset 0 0.0625rem 0 color-mix(in srgb, #fff 28%, transparent),
     0 0 0 0.0625rem color-mix(in srgb, var(--dt-foreground) 8%, transparent),
     0 0.75rem 2rem color-mix(in srgb, #000 12%, transparent);
-  --shadow-composer: 0 0.0625rem 0.125rem color-mix(in srgb, #000 5%, transparent);
+  /* Composer float — a soft contact + ambient falloff, lighter than the
+     overlay `--shadow-nous`. Painted by the `[data-slot='composer-surface']`
+     rule; also backs the chat-swap chip. */
+  --shadow-composer:
+    0 0.0625rem 0.125rem color-mix(in srgb, #000 6%, transparent),
+    0 0.375rem 1rem -0.25rem color-mix(in srgb, #000 6%, transparent);
 }
 
 @layer base {
@@ -493,11 +498,15 @@
     /* Paragraph spacing — vertical gap between prose paragraphs, both inside a
        markdown block and between consecutive prose parts. Single knob; tweak
        freely. */
-    --paragraph-gap: 0.7rem;
+    --paragraph-gap: 0.85rem;
     --sticky-human-top: 0.23rem;
     --file-tree-row-height: 1.375rem;
 
     --composer-width: 100%;
+    /* Corner radius of the composer box. The surface, its fallback, fills and
+       the coding strip all ride `rounded-[inherit]` off the root, so one knob
+       rounds the whole stack — matching the HUD bar's 0.75rem pill. */
+    --composer-radius: 0.75rem;
     --composer-control-size: 1.5rem;
     --composer-control-primary-size: 1.625rem;
     --composer-control-gap: 0.25rem;
@@ -1775,8 +1784,18 @@ body.guest-pointer-lock :is(webview, iframe) {
   ) !important;
 }
 
-[data-slot='composer-surface'] {
+[data-slot='composer-surface'],
+.composer-fallback-surface {
   border-color: var(--ui-stroke-secondary) !important;
+  box-shadow: var(--shadow-composer) !important;
+}
+
+/* The composer root is the radius source for the whole box (surface, fallback
+   surface, backing fills, coding strip — all `rounded-[inherit]`). Bumping the
+   radius here keeps every layer in lockstep, including the pre-measurement
+   fallback that only inherits from the root. */
+[data-slot='composer-root'] {
+  border-radius: var(--composer-radius) !important;
 }
 
 [data-slot='composer-fade'] {
