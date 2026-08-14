@@ -91,6 +91,56 @@ _MACHINE_PREFIXES = (
     "[System: The active model for this chat has changed to ",
 )
 
+# Desktop composer mention syntax (@url:`…`, @image:`…`, @file:`…`) travels
+# verbatim in the persisted user message, and the gateway prepends an
+# image-analysis preamble to turns with attachments. Both lead the text, so
+# an unstripped derived title names the session "@url:`https://github.com/…"
+# or "[The user attached an image. Here's…" instead of the actual request.
+_MENTION_TOKEN_RE = re.compile(r"@[a-z]+:`[^`\n]*`")
+
+_ATTACHMENT_PREAMBLE_RE = re.compile(
+    r"^\[The user attached an image[^\]]*\]"
+    r"(?:\s*\[[^\]]*vision_analyze[^\]]*\])*\s*",
+    re.IGNORECASE,
+)
+
+
+def _strip_attachment_scaffolding(text: str) -> str:
+    """Remove desktop attachment syntax, keeping the prose that carries intent.
+
+    Multiple attached images stack preambles ahead of the text, so the
+    preamble strip loops. A message that is ONLY an attachment mention
+    reduces to its target (host + first path segment for URLs, basename for
+    paths) so the session stays titleable.
+    """
+    if not text:
+        return ""
+    current = text.strip()
+    for _ in range(8):
+        stripped = _ATTACHMENT_PREAMBLE_RE.sub("", current).strip()
+        if stripped == current:
+            break
+        current = stripped
+    targets = [t.split(":`", 1)[1].rstrip("`") for t in _MENTION_TOKEN_RE.findall(current) if ":`" in t]
+    current = _MENTION_TOKEN_RE.sub(" ", current)
+    # Tidy the holes the mentions left without flattening line structure —
+    # derive_title() names multi-paragraph messages after the first line.
+    current = "\n".join(" ".join(ln.split()) for ln in current.splitlines()).strip()
+    if current:
+        return current
+    for target in targets:
+        target = target.strip().rstrip("/")
+        if not target:
+            continue
+        if "://" in target:
+            parts = [p for p in target.split("://", 1)[1].split("/") if p]
+            target = "/".join(parts[:2]) if parts else target
+        else:
+            target = target.rsplit("/", 1)[-1] or target
+        if target:
+            return target
+    return ""
+
 
 def _title_config() -> dict:
     """``auxiliary.title_generation`` (lazy read-only import: no hermes_cli cycle, no migration writes)."""
@@ -149,7 +199,10 @@ def _summarize_user_message(user_message: str) -> str:
         described = describe_skill_invocation(user_message)
     except Exception:
         logger.debug("Skill-scaffolding summary failed; titling raw", exc_info=True)
-    return strip_control_wrappers(user_message if described is None else described)
+    text = described if described is not None else user_message
+    # Attachment scaffolding (@url:`…` mentions, image preambles) sits
+    # outermost, ahead of any control wrappers in the typed text.
+    return strip_control_wrappers(_strip_attachment_scaffolding(text))
 
 
 def is_titleable_user_message(user_message: str) -> bool:
@@ -260,14 +313,31 @@ def generate_title(
     prompt = _TITLE_PROMPT_TEMPLATE.replace(
         "__LANGUAGE_RULE__", _LANGUAGE_RULE_PINNED.format(language=language) if language else _LANGUAGE_RULE_MATCH_USER,
     )
-    try:
-        response = call_llm(
+    def _call(*, with_schema: bool):
+        kwargs: dict[str, Any] = dict(
             task="title_generation",
             messages=[{"role": "system", "content": prompt}, {"role": "user", "content": user_snippet}],
             # A title is a handful of tokens; a larger ceiling let chatty models burn seconds.
             max_tokens=64, temperature=0.3, timeout=timeout, main_runtime=main_runtime,
-            extra_body={"response_format": _TITLE_RESPONSE_FORMAT},
         )
+        if with_schema:
+            kwargs["extra_body"] = {"response_format": _TITLE_RESPONSE_FORMAT}
+        return call_llm(**kwargs)
+
+    try:
+        try:
+            response = _call(with_schema=True)
+        except Exception as schema_err:
+            # DeepSeek and several coding-plan endpoints hard-400 on
+            # response_format=json_schema ("This response_format type is
+            # unavailable now"). _extract_title_text already tolerates plain
+            # JSON and prose fallbacks, so retry once unconstrained rather
+            # than lose the title and leave the session named after its raw
+            # derived slice forever.
+            if "response_format" not in str(schema_err):
+                raise
+            logger.info("Title endpoint rejects response_format; retrying without it")
+            response = _call(with_schema=False)
         title = _clean_title(_extract_title_text(response.choices[0].message.content or ""))
         # Answer-shaped output guard: titling is a 3-7 word task, so a title with many words is a model that
         # ignored the task and answered the user's message instead ("I don't have context on X — that's not

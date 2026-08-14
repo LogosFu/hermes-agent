@@ -126,6 +126,86 @@ class TestGenerateTitle:
 
         with patch("agent.title_generator.call_llm", return_value=mock_response):
             assert generate_title("question", "answer") == "Investigate the title resolver bug"
+    def test_retries_without_response_format_on_schema_rejection(self):
+        """Endpoints that hard-400 on response_format=json_schema (DeepSeek,
+        coding-plan gateways) must get one unconstrained retry instead of
+        losing the title."""
+        calls = []
+
+        def flaky_call_llm(**kwargs):
+            calls.append(kwargs)
+            if "extra_body" in kwargs:
+                raise RuntimeError(
+                    "Error code: 400 - {'error': {'message': "
+                    "'This response_format type is unavailable now'}}"
+                )
+            resp = MagicMock()
+            resp.choices = [MagicMock()]
+            resp.choices[0].message.content = '{"title": "Optimize Hermes UI"}'
+            return resp
+
+        with patch("agent.title_generator.call_llm", side_effect=flaky_call_llm):
+            assert generate_title("optimize the hermes desktop ui") == "Optimize Hermes UI"
+        assert len(calls) == 2
+        assert "extra_body" in calls[0] and "extra_body" not in calls[1]
+
+    def test_non_schema_error_does_not_retry(self):
+        calls = []
+
+        def failing_call_llm(**kwargs):
+            calls.append(kwargs)
+            raise RuntimeError("Error code: 401 - unauthorized")
+
+        with patch("agent.title_generator.call_llm", side_effect=failing_call_llm):
+            assert generate_title("question") is None
+        assert len(calls) == 1
+
+
+class TestAttachmentScaffolding:
+    """Desktop @-mentions and gateway image preambles must not title sessions."""
+
+    def test_derive_strips_url_mention(self):
+        from agent.title_generator import derive_title
+
+        assert (
+            derive_title("@url:`https://github.com/nousresearch/hermes-agent` 这个项目能不能优化一下界面")
+            == "这个项目能不能优化一下界面"
+        )
+
+    def test_derive_mention_only_falls_back_to_target(self):
+        from agent.title_generator import derive_title
+
+        assert (
+            derive_title("@url:`https://github.com/nousresearch/hermes-agent`")
+            == "github.com/nousresearch"
+        )
+
+    def test_derive_strips_image_preamble(self):
+        from agent.title_generator import derive_title
+
+        msg = (
+            "[The user attached an image:\na screenshot of a chart]\n"
+            "[You can examine it with vision_analyze using image_url: /tmp/x.png]\n\n"
+            "总结这张图里的趋势"
+        )
+        assert derive_title(msg) == "总结这张图里的趋势"
+
+    def test_generate_feeds_stripped_text_to_model(self):
+        from agent.title_generator import generate_title as gt
+
+        seen = {}
+
+        def capture_call_llm(**kwargs):
+            seen["user"] = kwargs["messages"][1]["content"]
+            resp = MagicMock()
+            resp.choices = [MagicMock()]
+            resp.choices[0].message.content = '{"title": "Summarize chart trend"}'
+            return resp
+
+        with patch("agent.title_generator.call_llm", side_effect=capture_call_llm):
+            gt("@image:`/tmp/chart.png` 帮我总结这张图")
+        assert "@image" not in seen["user"]
+        assert "帮我总结这张图" in seen["user"]
 
 
 
