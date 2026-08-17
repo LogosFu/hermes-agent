@@ -7,6 +7,8 @@ Single `memory` tool: add/replace/remove or a batch `operations` list."""
 import copy
 import json
 import logging
+import os
+
 from contextvars import ContextVar
 from pathlib import Path
 from hermes_constants import get_hermes_home
@@ -41,22 +43,109 @@ def get_memory_dir() -> Path:
 
 
 from tools.memory_tool_store import (  # noqa: E402,F401  (re-exports)
-    ENTRY_DELIMITER, MEMORY_BLOCK_HEADERS, MemoryStore, _scan_memory_content)
+    ENTRY_DELIMITER, MEMORY_BLOCK_HEADERS, PROJECT_MISSING_ERROR, MemoryStore, _scan_memory_content)
+
+
+def resolve_project_for_cwd(cwd: Optional[str]) -> Optional[Tuple[str, str]]:
+    """Map a session working directory to ``(project_id, project_name)``.
+
+    A session belongs to the project whose ``primary_path`` in the per-profile
+    projects store (``$HERMES_HOME/projects.db``) equals ``cwd`` or is a parent
+    directory of it; when several match, the longest (most specific) path wins.
+    Archived projects never match. A falsy ``cwd``, a cwd under no project
+    path, or any store failure returns ``None`` (no project layer for this
+    session).
+
+    Deliberately silent: the projects DB is an optional data source, so a
+    missing table, an unreadable file, or a connection error must degrade to
+    ``None`` — project resolution can never break agent init.
+    """
+    if not str(cwd or "").strip():
+        return None
+    try:
+        # Lazy import: keeps tool import cheap and avoids import-order coupling.
+        from hermes_cli.projects_db import (
+            _normalize_path,
+            connect_closing,
+            list_projects,
+        )
+
+        with connect_closing() as conn:
+            projects = list_projects(conn)  # include_archived=False by default
+    except Exception:
+        return None
+    try:
+        target = os.path.normcase(_normalize_path(str(cwd)))
+    except Exception:
+        return None
+    best: Optional[Tuple[int, str, str]] = None
+    for p in projects:
+        try:
+            raw = (p.primary_path or "").strip()
+            if not raw:
+                continue
+            # _normalize_path + normcase: the same comparison key the projects
+            # store itself uses for primary-path identity (find_by_primary_path).
+            folder = os.path.normcase(_normalize_path(raw))
+        except Exception:
+            continue
+        if target == folder or target.startswith(folder + os.sep) or target.startswith(folder + "/"):
+            if best is None or len(folder) > best[0]:
+                best = (len(folder), p.id, (p.name or p.slug or p.id).strip())
+    if best is None:
+        return None
+    return best[1], best[2]
 
 
 def load_on_disk_store() -> "MemoryStore":
     """Fresh on-disk MemoryStore with configured limits/flags for contexts with no live
     agent (gateway, Desktop, ``/memory``) so approvals enforce the SAME caps as
     ``agent_init``. Falls back to defaults if config can't load; never raises."""
+    memory_char_limit = 2200
+    user_char_limit = 1375
+    project_char_limit = 2200
+    memory_enabled = True
+    user_profile_enabled = True
+    project_memory_enabled = True
     try:
         from hermes_cli.config import load_config
         config = load_config() or {}
         mem_cfg = get_builtin_memory_config(config)
         memory_enabled, user_profile_enabled = get_builtin_memory_store_flags(config)
-        store = MemoryStore(int(mem_cfg.get("memory_char_limit", 2200)), int(mem_cfg.get("user_char_limit", 1375)),
-                            memory_enabled=memory_enabled, user_profile_enabled=user_profile_enabled)
+        memory_char_limit = int(mem_cfg.get("memory_char_limit", memory_char_limit))
+        user_char_limit = int(mem_cfg.get("user_char_limit", user_char_limit))
+        project_char_limit = int(mem_cfg.get("project_char_limit", project_char_limit))
+        project_memory_enabled = bool(mem_cfg.get("project_memory_enabled", True))
     except Exception:
-        store = MemoryStore()  # config optional — fall back to defaults rather than break /memory
+        pass  # config optional — fall back to defaults rather than break /memory
+
+    # Resolve the session's project the same way the live agent does, so an
+    # approval applied here lands in the SAME per-project store the original
+    # session would have written. Any failure degrades to no project layer.
+    project_key = None
+    project_name = None
+    if project_memory_enabled:
+        try:
+            from agent.runtime_cwd import resolve_context_cwd
+
+            _cwd = resolve_context_cwd()
+            if _cwd is None:
+                _cwd = os.getcwd()
+            _resolved = resolve_project_for_cwd(str(_cwd))
+            if _resolved:
+                project_key, project_name = _resolved
+        except Exception:
+            pass
+
+    store = MemoryStore(
+        memory_char_limit=memory_char_limit,
+        user_char_limit=user_char_limit,
+        memory_enabled=memory_enabled,
+        user_profile_enabled=user_profile_enabled,
+        project_char_limit=project_char_limit,
+        project_key=project_key,
+        project_name=project_name,
+    )
     store.load_from_disk()
     return store
 
@@ -99,7 +188,7 @@ def _batch_op_line(op: Dict[str, Any]) -> str:
 def _apply_write_gate(action: str, target: str, content: Optional[str], old_text: Optional[str],
                       operations: Optional[List[Dict[str, Any]]] = None) -> Optional[str]:
     """Gate one mutating op, or (``operations`` set) a whole batch as a single unit."""
-    label = "user profile" if target == "user" else "memory"
+    label = "user profile" if target == "user" else ("project memory" if target == "project" else "memory")
     if operations is not None:
         return _gate_or_stage(f"apply {len(operations)} op(s) to {label}",
                               "\n".join(_batch_op_line(op) for op in operations),
@@ -189,10 +278,17 @@ def check_memory_requirements() -> bool:
 
 def _memory_target_error(store: "MemoryStore", target: str) -> Optional[Dict[str, Any]]:
     """Return a shared validation error for an invalid or disabled target."""
-    if target not in {"memory", "user"}:
+    if target not in {"memory", "user", "project"}:
         from tools.registry import _bound_error_text
         return {"success": False,
-                "error": _bound_error_text(f"Invalid memory target '{target}'. Use 'memory' or 'user'.")}
+                "error": _bound_error_text(f"Invalid memory target '{target}'. Use 'memory', 'user', or 'project'.")}
+    if target == "project":
+        # Project-layer availability depends on resolved project context, not
+        # the memory/user store flags; a project-aware session may write to
+        # its own scoped file while the built-in stores are disabled.
+        if not store.project_key:
+            return {"success": False, "error": PROJECT_MISSING_ERROR}
+        return None
     if store.target_enabled(target):
         return None
     label = "USER.md" if target == "user" else "MEMORY.md"
@@ -233,7 +329,10 @@ MEMORY_SCHEMA = {
         "IF FULL: an add is rejected with the current entries shown. Reissue as ONE batch that "
         "removes or shortens enough stale entries and adds the new one together.\n\n"
         "TARGETS: 'user' = who the user is (name, role, preferences, style). 'memory' = your "
-        "notes (environment, conventions, tool quirks, lessons).\n\n"
+        "notes (environment, conventions, tool quirks, lessons). 'project' = durable facts "
+        "about the current project (architecture decisions, build/test commands, conventions, "
+        "progress) — only available when this session runs inside a registered project "
+        "directory; writes to it land in that project's own memory.\n\n"
         "SKIP: trivial/obvious info, easily re-discovered facts, raw data dumps, task progress, "
         "completed-work logs, temporary TODO state (use session_search for those). Reusable "
         "procedures belong in a skill, not memory."
@@ -248,8 +347,8 @@ MEMORY_SCHEMA = {
             },
             "target": {
                 "type": "string",
-                "enum": ["memory", "user"],
-                "description": "Which memory store: 'memory' for personal notes, 'user' for user profile."
+                "enum": ["memory", "user", "project"],
+                "description": "Which memory store: 'memory' for personal notes, 'user' for user profile, 'project' for the current project's notes (requires the session to run inside a registered project)."
             },
             "content": {
                 "type": "string",

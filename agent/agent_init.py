@@ -1188,7 +1188,6 @@ def _apply_display_config(agent, _agent_cfg, platform):
     except Exception as _tlg_err:
         _ra().logger.warning("Tool loop guardrail config ignored: %s", _tlg_err)
 
-
 def _memory_provider_init_kwargs(agent, platform) -> Dict[str, Any]:
     """Scoping kwargs for ``MemoryManager.initialize_all`` (status_callback is CLI-only:
     gateway status travels a different path and the indicator no-ops without it)."""
@@ -1222,10 +1221,11 @@ def _memory_provider_init_kwargs(agent, platform) -> Dict[str, Any]:
 
 
 def _init_memory(agent, _agent_cfg, skip_memory, platform):
-    # Persistent memory (MEMORY.md + USER.md) — loaded from disk
+    # Persistent memory (MEMORY.md + USER.md + per-project MEMORY.md) — loaded from disk
     agent._memory_store = None
     agent._memory_enabled = False
     agent._user_profile_enabled = False
+    agent._project_memory_enabled = False
     agent._memory_nudge_interval = 10
     agent._turns_since_memory = 0
     agent._iters_since_skill = 0
@@ -1245,18 +1245,46 @@ def _init_memory(agent, _agent_cfg, skip_memory, platform):
         with suppress(Exception):
             from tools.memory_tool import (
                 MemoryStore, get_builtin_memory_config, get_builtin_memory_store_flags,
+                resolve_project_for_cwd,
             )
             mem_config = get_builtin_memory_config(_agent_cfg)
             agent._memory_enabled, agent._user_profile_enabled = get_builtin_memory_store_flags(
                 _agent_cfg
             )
+            agent._project_memory_enabled = mem_config.get("project_memory_enabled", True)
             agent._memory_nudge_interval = int(mem_config.get("nudge_interval", 10))
-            if agent._memory_enabled or agent._user_profile_enabled:
+            if agent._memory_enabled or agent._user_profile_enabled or agent._project_memory_enabled:
+                # Resolve the session's project from its working directory.
+                # cwd sources: the gateway/TUI pin it per session via the
+                # session-cwd ContextVar (set_session_cwd), the messaging
+                # gateway via TERMINAL_CWD. resolve_context_cwd() returns None
+                # when neither is set — for a local CLI the launch dir IS the
+                # session cwd (the same fallback context-file discovery uses),
+                # so we fall back to os.getcwd(). Every failure degrades to
+                # "no project layer": project resolution must never break
+                # agent init (memory is an optional capability).
+                project_key = None
+                project_name = None
+                if agent._project_memory_enabled:
+                    try:
+                        from agent.runtime_cwd import resolve_context_cwd
+
+                        _session_cwd = resolve_context_cwd()
+                        if _session_cwd is None:
+                            _session_cwd = os.getcwd()
+                        _resolved = resolve_project_for_cwd(str(_session_cwd))
+                        if _resolved:
+                            project_key, project_name = _resolved
+                    except Exception:
+                        pass
                 agent._memory_store = MemoryStore(
                     memory_char_limit=mem_config.get("memory_char_limit", 2200),
                     user_char_limit=mem_config.get("user_char_limit", 1375),
                     memory_enabled=agent._memory_enabled,
                     user_profile_enabled=agent._user_profile_enabled,
+                    project_char_limit=mem_config.get("project_char_limit", 2200),
+                    project_key=project_key,
+                    project_name=project_name,
                 )
                 agent._memory_store.load_from_disk()
 

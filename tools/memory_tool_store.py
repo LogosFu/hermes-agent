@@ -17,7 +17,14 @@ logger = logging.getLogger("tools.memory_tool")
 # Block header prefixes rendered by _render_block; agent/conversation_compression.py
 # matches them to detect a leftover block for an emptied target — keep in lockstep.
 MEMORY_BLOCK_HEADERS = {
-    "memory": "MEMORY (your personal notes)", "user": "USER PROFILE (who the user is)"}
+    "memory": "MEMORY (your personal notes)", "user": "USER PROFILE (who the user is)",
+    # Dynamic per-project header rendered as ``PROJECT MEMORY (<name>) …`` —
+    # the name is appended after this prefix by MemoryStore._render_block.
+    "project": "PROJECT MEMORY ("}
+
+# Returned when a session with no project context writes to target="project".
+PROJECT_MISSING_ERROR = (
+    "This session is not associated with a project (cwd not under any project path).")
 
 ENTRY_DELIMITER = "\n§\n"
 
@@ -75,17 +82,29 @@ class MemoryStore:
     _MAX_CONSOLIDATION_FAILURES_PER_TURN = 3
 
     def __init__(self, memory_char_limit: int = 2200, user_char_limit: int = 1375, *,
-                 memory_enabled: bool = True, user_profile_enabled: bool = True):
+                 memory_enabled: bool = True, user_profile_enabled: bool = True,
+                 project_char_limit: int = 2200,
+                 project_key: Optional[str] = None, project_name: Optional[str] = None):
         self.memory_entries: List[str] = []
         self.user_entries: List[str] = []
+        self.project_entries: List[str] = []
         self.memory_char_limit, self.user_char_limit = memory_char_limit, user_char_limit
+        self.project_char_limit = project_char_limit
         self.memory_enabled, self.user_profile_enabled = memory_enabled, user_profile_enabled
-        self._system_prompt_snapshot: Dict[str, str] = {"memory": "", "user": ""}
+        # Project layer identity. ``project_key`` is the projects.db id used
+        # for the on-disk path; ``project_name`` is the display name rendered
+        # in the prompt header. Both falsy → this session has no project layer
+        # and target="project" writes are refused with PROJECT_MISSING_ERROR.
+        self.project_key = project_key
+        self.project_name = (project_name or "").strip() or (project_key or "")
+        self._system_prompt_snapshot: Dict[str, str] = {"memory": "", "user": "", "project": ""}
         self._consolidation_failures = 0  # per turn; reset by reset_consolidation_failures()
 
     # Per-turn counter of failed at-capacity consolidation attempts; reset at each turn boundary by
     # reset_consolidation_failures() (#42405).
     def target_enabled(self, target: str) -> bool:
+        if target == "project":
+            return bool(self.project_key)
         return self.user_profile_enabled if target == "user" else self.memory_enabled
 
     def reset_consolidation_failures(self) -> None:
@@ -132,6 +151,14 @@ class MemoryStore:
             self._set_entries(target, entries)
             self._system_prompt_snapshot[target] = self._render_block(target, [_sanitize(e, path.name) for e in entries])
 
+        if self.project_key:
+            path = self._path_for("project")
+            path.parent.mkdir(parents=True, exist_ok=True)
+            entries = list(dict.fromkeys(self._read_file(path)))
+            self._set_entries("project", entries)
+            self._system_prompt_snapshot["project"] = self._render_block(
+                "project", [_sanitize(e, f"projects/{self.project_key}/MEMORY.md") for e in entries])
+
     @staticmethod
     @contextmanager
     def _file_lock(path: Path):
@@ -158,21 +185,34 @@ class MemoryStore:
                 with suppress(OSError):
                     _flock(True)
 
-    @staticmethod
-    def _path_for(target: str) -> Path:
+    def _path_for(self, target: str) -> Path:
         from tools import memory_tool  # get_memory_dir is monkeypatched there
+        if target == "project":
+            # Mutating callers guard on project availability first (see
+            # _project_context_error); reaching here without a project is a
+            # programming error, not a runtime path.
+            if not self.project_key:
+                raise ValueError("project target used without a project context")
+            return memory_tool.get_memory_dir() / "projects" / self.project_key / "MEMORY.md"
         return memory_tool.get_memory_dir() / ("USER.md" if target == "user" else "MEMORY.md")
 
     def _entries_for(self, target: str) -> List[str]:
+        if target == "project":
+            return self.project_entries
         return self.user_entries if target == "user" else self.memory_entries
 
     def _set_entries(self, target: str, entries: List[str]):
+        if target == "project":
+            self.project_entries = entries
+            return
         setattr(self, "user_entries" if target == "user" else "memory_entries", entries)
 
     def _char_count(self, target: str) -> int:
         return len(ENTRY_DELIMITER.join(self._entries_for(target)))
 
     def _char_limit(self, target: str) -> int:
+        if target == "project":
+            return self.project_char_limit
         return self.user_char_limit if target == "user" else self.memory_char_limit
 
     def _usage(self, target: str) -> str:
@@ -187,6 +227,17 @@ class MemoryStore:
         return self._consolidation_failure(
             _error(message, current_entries=self._entries_for(target), usage=self._usage(target)))
 
+    def _project_context_error(self, target: str) -> Optional[Dict[str, Any]]:
+        """Error dict for target="project" without a project context, else None.
+
+        A session with no associated project (cwd not under any project path)
+        must get a friendly, actionable error instead of touching a shared or
+        mis-scoped file.
+        """
+        if target != "project" or self.project_key:
+            return None
+        return _error(PROJECT_MISSING_ERROR)
+
     def _mutate(self, target: str, mutate, *, skip_drift: bool = False) -> Dict[str, Any]:
         """Lock, re-read from disk, run ``mutate(entries, limit)`` -> ``(new_entries, message)``
         or an error dict, then persist and return the success response. The reload aborts
@@ -194,6 +245,9 @@ class MemoryStore:
         file) and, unless *skip_drift*, on external drift (flushing would discard
         un-roundtrippable content). Drift check and parse use the SAME raw snapshot —
         a failed second read used to count as "no drift"."""
+        _proj_err = self._project_context_error(target)
+        if _proj_err:
+            return _proj_err
         path = self._path_for(target)
         with self._file_lock(path):
             raw, read_ok = self._read_raw_checked(path)
@@ -348,7 +402,12 @@ class MemoryStore:
         if not entries:
             return ""
         content, sep = ENTRY_DELIMITER.join(entries), "═" * 46
-        title = MEMORY_BLOCK_HEADERS["user" if target == "user" else "memory"]
+        if target == "project":
+            # PROJECT MEMORY (<display name>) — mirrors the shared-layer header
+            # shape so the injected block is visually and structurally familiar.
+            title = f"{MEMORY_BLOCK_HEADERS['project']}{self.project_name})"
+        else:
+            title = MEMORY_BLOCK_HEADERS["user" if target == "user" else "memory"]
         return f"{sep}\n{title} [{self._usage_pct(target, len(content))}]\n{sep}\n{content}"
 
     @staticmethod

@@ -7,6 +7,7 @@ from pathlib import Path
 from tools.memory_tool import (
     MemoryStore,
     memory_tool,
+    resolve_project_for_cwd,
     _scan_memory_content,
 )
 
@@ -704,3 +705,294 @@ class TestBomToleranceInMemoryFiles:
         raw, read_ok = MemoryStore._read_raw_checked(path)
         assert read_ok is False
         assert raw == ""
+
+
+# =========================================================================
+# Project memory layer (per-project MEMORY.md under memories/projects/<id>/)
+# =========================================================================
+
+
+def _seed_project(name, primary_path, archived=False):
+    """Create a project in the (per-test) projects.db and return its id."""
+    from hermes_cli.projects_db import archive_project, connect_closing, create_project
+
+    with connect_closing() as conn:
+        pid = create_project(conn, name=name, primary_path=str(primary_path))
+        if archived:
+            archive_project(conn, pid)
+        return pid
+
+
+@pytest.fixture()
+def project_store(tmp_path, monkeypatch):
+    """A MemoryStore with a project context and temp storage."""
+    monkeypatch.setattr("tools.memory_tool.get_memory_dir", lambda: tmp_path)
+    s = MemoryStore(
+        memory_char_limit=500,
+        user_char_limit=300,
+        project_char_limit=200,
+        project_key="p_abc123",
+        project_name="Fake Project",
+    )
+    s.load_from_disk()
+    return s
+
+
+class TestProjectMemoryStore:
+    def test_add_persists_to_project_dir_and_leaves_shared_layer_alone(self, project_store, tmp_path):
+        result = project_store.add("project", "CI runs on GitHub Actions")
+        assert result["success"] is True
+        assert result["target"] == "project"
+        path = project_store._path_for("project")
+        assert path == tmp_path / "projects" / "p_abc123" / "MEMORY.md"
+        assert "CI runs on GitHub Actions" in path.read_text(encoding="utf-8")
+        # The shared layer is a separate store — untouched by project writes.
+        assert project_store.memory_entries == []
+        assert project_store.user_entries == []
+
+    def test_replace_remove_apply_batch_on_project(self, project_store):
+        project_store.add("project", "Uses uv for dependency management")
+        r = project_store.replace("project", "uv", "Uses rye for dependency management")
+        assert r["success"] is True
+        assert project_store.project_entries == ["Uses rye for dependency management"]
+
+        r = project_store.apply_batch("project", [
+            {"action": "remove", "old_text": "rye"},
+            {"action": "add", "content": "Build with make"},
+        ])
+        assert r["success"] is True
+        assert project_store.project_entries == ["Build with make"]
+
+    def test_budget_over_limit_error_mirrors_shared_layer(self, project_store):
+        project_store.add("project", "x" * 50)
+        r = project_store.add("project", "y" * 250)
+        assert r["success"] is False
+        assert "chars" in r["error"]
+        assert "Consolidate" in r["error"]
+        assert "current_entries" in r
+        assert r["usage"] == "50/200"
+
+    def test_snapshot_frozen_at_init(self, project_store):
+        project_store.add("project", "frozen at start")
+        project_store.load_from_disk()  # re-load to capture the snapshot
+        snapshot = project_store.format_for_system_prompt("project")
+        assert "PROJECT MEMORY (Fake Project)" in snapshot
+        assert "frozen at start" in snapshot
+        assert "[0% —" in snapshot or "% —" in snapshot
+
+        # Mid-session writes must NOT change the frozen snapshot.
+        project_store.add("project", "added later")
+        assert project_store.format_for_system_prompt("project") == snapshot
+        assert "added later" not in snapshot
+
+    def test_project_block_absent_without_project(self, tmp_path, monkeypatch):
+        monkeypatch.setattr("tools.memory_tool.get_memory_dir", lambda: tmp_path)
+        s = MemoryStore()
+        s.load_from_disk()
+        assert s.format_for_system_prompt("project") is None
+        assert s._system_prompt_snapshot["project"] == ""
+
+    def test_no_project_context_refuses_writes(self, tmp_path, monkeypatch):
+        monkeypatch.setattr("tools.memory_tool.get_memory_dir", lambda: tmp_path)
+        s = MemoryStore()
+        s.load_from_disk()
+        for result in (
+            s.add("project", "fact"),
+            s.replace("project", "old", "new"),
+            s.remove("project", "old"),
+            s.apply_batch("project", [{"action": "add", "content": "fact"}]),
+        ):
+            assert result["success"] is False
+            assert "not associated with a project" in result["error"]
+        assert not (tmp_path / "projects").exists()
+
+
+class TestProjectMemoryToolDispatcher:
+    def test_project_target_roundtrip_through_tool(self, project_store):
+        out = json.loads(memory_tool("add", "project", "saved via tool", store=project_store))
+        assert out["success"] is True
+        assert out["target"] == "project"
+        assert "saved via tool" in project_store.project_entries
+
+    def test_friendly_error_when_session_has_no_project(self, tmp_path, monkeypatch):
+        monkeypatch.setattr("tools.memory_tool.get_memory_dir", lambda: tmp_path)
+        s = MemoryStore()
+        s.load_from_disk()
+        out = json.loads(memory_tool("add", "project", "fact", store=s))
+        assert out["success"] is False
+        assert (
+            "This session is not associated with a project (cwd not under any project path)."
+            in out["error"]
+        )
+
+    def test_invalid_target_message_mentions_project(self, project_store):
+        out = json.loads(memory_tool("add", "bogus", "fact", store=project_store))
+        assert out["success"] is False
+        assert "'project'" in out["error"]
+
+    def test_schema_target_enum_includes_project(self):
+        from tools.memory_tool import MEMORY_SCHEMA
+
+        enum = MEMORY_SCHEMA["parameters"]["properties"]["target"]["enum"]
+        assert enum == ["memory", "user", "project"]
+        assert "project" in MEMORY_SCHEMA["description"]
+
+
+class TestResolveProjectForCwd:
+    def test_longest_primary_path_wins(self, tmp_path):
+        parent = tmp_path / "repo"
+        child = parent / "sub"
+        child.mkdir(parents=True)
+        _seed_project("Parent Project", parent)
+        _seed_project("Child Project", child)
+
+        _, name = resolve_project_for_cwd(str(child))
+        assert name == "Child Project"
+        _, name = resolve_project_for_cwd(str(parent))
+        assert name == "Parent Project"
+
+    def test_subdirectory_belongs_to_project(self, tmp_path):
+        proj = tmp_path / "proj"
+        (proj / "src" / "deep").mkdir(parents=True)
+        pid = _seed_project("Proj", proj)
+        key, name = resolve_project_for_cwd(str(proj / "src" / "deep"))
+        assert (key, name) == (pid, "Proj")
+
+    def test_no_match_outside_any_project(self, tmp_path):
+        elsewhere = tmp_path / "elsewhere"
+        elsewhere.mkdir()
+        assert resolve_project_for_cwd(str(elsewhere)) is None
+
+    def test_archived_project_excluded(self, tmp_path):
+        proj = tmp_path / "archived-proj"
+        proj.mkdir()
+        _seed_project("Gone", proj, archived=True)
+        assert resolve_project_for_cwd(str(proj)) is None
+
+    def test_falsy_cwd_returns_none(self):
+        assert resolve_project_for_cwd(None) is None
+        assert resolve_project_for_cwd("") is None
+        assert resolve_project_for_cwd("   ") is None
+
+    def test_db_failure_degrades_to_none(self, tmp_path, monkeypatch):
+        def _boom():
+            raise RuntimeError("projects.db unavailable")
+
+        monkeypatch.setattr("hermes_cli.projects_db.connect_closing", _boom)
+        proj = tmp_path / "p"
+        proj.mkdir()
+        assert resolve_project_for_cwd(str(proj)) is None
+
+
+class TestProjectMemorySystemPromptEndToEnd:
+    """Temp HERMES_HOME + temp projects.db: agent store gets BOTH blocks."""
+
+    def test_system_prompt_carries_shared_and_project_blocks(self, tmp_path, monkeypatch):
+        from types import SimpleNamespace
+        from unittest.mock import patch as _patch
+
+        from agent.system_prompt import build_system_prompt_parts
+
+        home = Path(__import__("hermes_constants").get_hermes_home())
+        proj_dir = tmp_path / "fakeproj"
+        proj_dir.mkdir()
+        pid = _seed_project("Fake Project", proj_dir)
+
+        mem_dir = home / "memories"
+        (mem_dir).mkdir(parents=True, exist_ok=True)
+        (mem_dir / "MEMORY.md").write_text("shared fact from the public layer", encoding="utf-8")
+        (mem_dir / "projects" / pid).mkdir(parents=True, exist_ok=True)
+        (mem_dir / "projects" / pid / "MEMORY.md").write_text(
+            "project fact: builds with make", encoding="utf-8"
+        )
+
+        # Mirror agent_init: resolve the session project from cwd, build the
+        # store, load the frozen snapshot.
+        key, name = resolve_project_for_cwd(str(proj_dir))
+        assert (key, name) == (pid, "Fake Project")
+        store = MemoryStore(
+            memory_char_limit=2200,
+            user_char_limit=1375,
+            project_char_limit=2200,
+            project_key=key,
+            project_name=name,
+        )
+        store.load_from_disk()
+
+        agent = SimpleNamespace(
+            load_soul_identity=False,
+            skip_context_files=False,
+            valid_tool_names=[],
+            _task_completion_guidance=False,
+            _tool_use_enforcement=False,
+            _environment_probe=False,
+            _kanban_worker_guidance="",
+            _memory_store=store,
+            _memory_manager=None,
+            _memory_enabled=True,
+            _user_profile_enabled=True,
+            _project_memory_enabled=True,
+            model="",
+            provider="",
+            platform="cli",
+            pass_session_id=False,
+            session_id="",
+        )
+        with (
+            _patch("run_agent.load_soul_md", return_value=""),
+            _patch("run_agent.build_nous_subscription_prompt", return_value=""),
+            _patch("run_agent.build_environment_hints", return_value=""),
+            _patch("run_agent.build_context_files_prompt", return_value=""),
+        ):
+            parts = build_system_prompt_parts(agent)
+
+        volatile = parts["volatile"]
+        assert "MEMORY (your personal notes)" in volatile
+        assert "shared fact from the public layer" in volatile
+        assert "PROJECT MEMORY (Fake Project)" in volatile
+        assert "project fact: builds with make" in volatile
+
+    def test_no_project_session_gets_no_project_block(self, tmp_path, monkeypatch):
+        from types import SimpleNamespace
+        from unittest.mock import patch as _patch
+
+        from agent.system_prompt import build_system_prompt_parts
+
+        home = Path(__import__("hermes_constants").get_hermes_home())
+        mem_dir = home / "memories"
+        mem_dir.mkdir(parents=True, exist_ok=True)
+        (mem_dir / "MEMORY.md").write_text("shared fact", encoding="utf-8")
+
+        store = MemoryStore(memory_char_limit=2200, user_char_limit=1375)
+        store.load_from_disk()
+        assert store.project_key is None
+
+        agent = SimpleNamespace(
+            load_soul_identity=False,
+            skip_context_files=False,
+            valid_tool_names=[],
+            _task_completion_guidance=False,
+            _tool_use_enforcement=False,
+            _environment_probe=False,
+            _kanban_worker_guidance="",
+            _memory_store=store,
+            _memory_manager=None,
+            _memory_enabled=True,
+            _user_profile_enabled=True,
+            _project_memory_enabled=True,
+            model="",
+            provider="",
+            platform="cli",
+            pass_session_id=False,
+            session_id="",
+        )
+        with (
+            _patch("run_agent.load_soul_md", return_value=""),
+            _patch("run_agent.build_nous_subscription_prompt", return_value=""),
+            _patch("run_agent.build_environment_hints", return_value=""),
+            _patch("run_agent.build_context_files_prompt", return_value=""),
+        ):
+            parts = build_system_prompt_parts(agent)
+
+        assert "MEMORY (your personal notes)" in parts["volatile"]
+        assert "PROJECT MEMORY (" not in parts["volatile"]

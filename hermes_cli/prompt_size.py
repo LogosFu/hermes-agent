@@ -163,7 +163,7 @@ def compute_prompt_breakdown(platform: str = "cli") -> Dict[str, Any]:
 
     # Memory + user profile are joined into ``volatile``; re-derive them from the store so the
     # numbers stay attributable.
-    memory_block = user_block = ""
+    memory_block = user_block = project_block = ""
     store = getattr(agent, "_memory_store", None)
     if store is not None:
         try:
@@ -171,6 +171,8 @@ def compute_prompt_breakdown(platform: str = "cli") -> Dict[str, Any]:
                 memory_block = store.format_for_system_prompt("memory") or ""
             if getattr(agent, "_user_profile_enabled", True):
                 user_block = store.format_for_system_prompt("user") or ""
+            if getattr(agent, "_project_memory_enabled", False):
+                project_block = store.format_for_system_prompt("project") or ""
         except Exception:
             pass
 
@@ -187,6 +189,7 @@ def compute_prompt_breakdown(platform: str = "cli") -> Dict[str, Any]:
         "skills_index": _size(skills_index),
         "memory": _size(memory_block),
         "user_profile": _size(user_block),
+        "project_memory": _size(project_block),
         "tools": {"count": len(tools), "json_bytes": _bytes(json.dumps(tools, ensure_ascii=False))},
         "sections": sections,
         "skills_breakdown": _compute_skills_breakdown(skills_index),
@@ -203,7 +206,7 @@ def render_breakdown(data: Dict[str, Any]) -> str:
         f"  System prompt total : {sp['bytes']:>8,} B  ({_fmt_kb(sp['bytes'])}, {sp['chars']:,} chars)", "",
         "  Major blocks:",
     ]
-    for label, key in (("skills index", "skills_index"), ("memory", "memory"), ("user profile", "user_profile")):
+    for label, key in (("skills index", "skills_index"), ("memory", "memory"), ("user profile", "user_profile"), ("project memory", "project_memory")):
         byts = data[key]["bytes"]
         lines.append(f"    {label:<19}: {byts:>8,} B  ({_fmt_kb(byts)})")
     lines += ["", "  Prompt tiers:"] + [f"    {label:<36}: {byts:>8,} B  ({_fmt_kb(byts)})" for label, _chars, byts in data["sections"]]

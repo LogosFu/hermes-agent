@@ -466,6 +466,14 @@ def _memory_parts(agent: Any) -> List[str]:
             block = agent._memory_store.format_for_system_prompt(kind) if enabled else None
             if block:
                 parts.append(block)
+        # Project memory -- the per-project layer, injected only for sessions
+        # whose cwd belongs to a registered project. Same frozen-snapshot
+        # discipline as the blocks above: rendered from the init-time snapshot,
+        # byte-stable for the whole session regardless of mid-session writes.
+        if getattr(agent, "_project_memory_enabled", False):
+            project_block = agent._memory_store.format_for_system_prompt("project")
+            if project_block:
+                parts.append(project_block)
     # External memory provider system prompt block (additive to built-in). Gated on the same check
     # ``inject_memory_provider_tools`` uses so we never advertise provider tools that the agent's toolset
     # configuration has already gated off (#81014).

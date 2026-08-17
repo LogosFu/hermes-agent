@@ -1199,6 +1199,13 @@ DEFAULT_CONFIG = {
         "user_char_limit": 1375,     # ~500 tokens at 2.75 chars/token
         # Periodic built-in memory review; 0 when an external provider auto-extracts.
         "nudge_interval": 10,
+        # Per-project memory layer. Each registered project (projects.db) gets
+        # its own store at memories/projects/<id>/MEMORY.md, injected into the
+        # system prompt only for sessions whose cwd sits inside that project.
+        # The project layer is additive to the shared MEMORY/USER.md layers
+        # and carries its own independent char budget.
+        "project_memory_enabled": True,
+        "project_char_limit": 2200,  # same default budget as the shared layer
         # External memory provider plugin (empty = built-in only); only ONE at a time: "openviking",
         # "mem0", "hindsight", "holographic", "retaindb", "byterover".
         "provider": "",

@@ -843,6 +843,7 @@ def build_cache_parity_fork(
     review_agent._memory_store = agent._memory_store
     review_agent._memory_enabled = agent._memory_enabled
     review_agent._user_profile_enabled = agent._user_profile_enabled
+    review_agent._project_memory_enabled = getattr(agent, "_project_memory_enabled", False)
     review_agent._memory_nudge_interval = review_agent._skill_nudge_interval = 0
     # _skip_mcp_refresh: the between-turns MCP refresh would add late-connecting MCP tools and
     # break tools[] parity. PERSISTENCE ISOLATION (curator-takeover root cause): sharing the
