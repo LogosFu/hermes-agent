@@ -365,6 +365,13 @@ class MemoryProviderSelect(BaseModel):
 class MemoryReset(BaseModel):
     target: str = "all"  # "all" | "memory" | "user"
 
+
+class MemoryFileUpdate(BaseModel):
+    # "memory" | "user" | "project" — project also requires project_id.
+    scope: str
+    project_id: Optional[str] = None
+    content: str = ""
+
 class BackupRequest(BaseModel):
     output: Optional[str] = None  # defaults to a timestamped zip in the home dir
 

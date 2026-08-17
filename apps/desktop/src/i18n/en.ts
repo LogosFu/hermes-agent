@@ -2317,12 +2317,28 @@ export const en: Translations = {
     missingBody: 'This artifact is no longer in the local registry.'
   },
 
+  memory: {
+    title: 'Memory',
+    frozenHint: "Edits apply to new sessions; the current session's prompt is frozen by design.",
+    groupCommon: 'Common',
+    groupProjects: 'Projects',
+    agentMemory: 'Agent memory',
+    userProfile: 'User profile',
+    save: 'Save',
+    saved: 'Memory saved',
+    saveFailed: 'Could not save memory',
+    overLimit: 'Content exceeds the character limit',
+    retry: 'Retry',
+    loadFailed: 'Could not load memory files.'
+  },
+
   sidebar: {
     nav: {
       'new-session': 'New session',
       skills: 'Capabilities',
       messaging: 'Messaging',
       artifacts: 'Artifacts',
+      memory: 'Memory',
       cron: 'Scheduled jobs'
     },
     searchAria: 'Search sessions',

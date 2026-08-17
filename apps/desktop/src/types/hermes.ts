@@ -1626,6 +1626,21 @@ export interface MemoryStatusResponse {
   builtin_files: { memory: number; user: number }
 }
 
+/** `GET /api/memory/files` — one editable memory file per entry. Common files
+ *  (`memory` / `user`) have no project fields; project entries carry both. */
+export interface MemoryFileEntry {
+  scope: 'memory' | 'user' | 'project'
+  chars: number
+  limit: number
+  content: string
+  project_id?: string
+  project_name?: string
+}
+
+export interface MemoryFilesResponse {
+  files: MemoryFileEntry[]
+}
+
 /** `GET /api/curator` — background skill-curator status. */
 export interface CuratorStatusResponse {
   enabled: boolean

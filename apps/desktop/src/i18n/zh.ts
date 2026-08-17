@@ -2484,12 +2484,28 @@ export const zh: Translations = {
     missingBody: '此产物已不在本地注册表中。'
   },
 
+  memory: {
+    title: '记忆',
+    frozenHint: '编辑对新会话生效；当前会话的提示词按设计冻结。',
+    groupCommon: '公共',
+    groupProjects: '项目',
+    agentMemory: 'Agent 记忆',
+    userProfile: '用户画像',
+    save: '保存',
+    saved: '记忆已保存',
+    saveFailed: '记忆保存失败',
+    overLimit: '内容超出字符上限',
+    retry: '重试',
+    loadFailed: '记忆文件加载失败。'
+  },
+
   sidebar: {
     nav: {
       'new-session': '新建会话',
       skills: '技能与工具',
       messaging: '消息平台',
       artifacts: '产物',
+      memory: '记忆',
       cron: '定时任务'
     },
     searchAria: '搜索会话',

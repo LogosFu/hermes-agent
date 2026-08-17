@@ -1992,12 +1992,28 @@ export const ja = defineLocale({
     missingBody: 'このアーティファクトはローカルレジストリに存在しません。'
   },
 
+  memory: {
+    title: 'メモリ',
+    frozenHint: '編集は新しいセッションに適用されます。現在のセッションのプロンプトは設計上固定されています。',
+    groupCommon: '共通',
+    groupProjects: 'プロジェクト',
+    agentMemory: 'エージェントメモリ',
+    userProfile: 'ユーザープロフィール',
+    save: '保存',
+    saved: 'メモリを保存しました',
+    saveFailed: 'メモリを保存できませんでした',
+    overLimit: '内容が文字数上限を超えています',
+    retry: '再試行',
+    loadFailed: 'メモリファイルを読み込めませんでした。'
+  },
+
   sidebar: {
     nav: {
       'new-session': '新しいセッション',
       skills: 'スキルとツール',
       messaging: 'メッセージング',
       artifacts: 'アーティファクト',
+      memory: 'メモリ',
       cron: 'スケジュール済みジョブ'
     },
     searchAria: 'セッションを検索',

@@ -20,6 +20,7 @@ export * from './api/config'
 export * from './api/cron'
 export * from './api/local-models'
 export * from './api/mcp'
+export * from './api/memory'
 export * from './api/messaging'
 export * from './api/models'
 export * from './api/plugins'
@@ -72,6 +73,8 @@ export type {
   McpCatalogResponse,
   McpServerSummary,
   McpServerTestResponse,
+  MemoryFileEntry,
+  MemoryFilesResponse,
   MemoryProviderConfig,
   MemoryProviderOAuthStatus,
   MemoryStatusResponse,
