@@ -2774,6 +2774,21 @@ export const en: Translations = {
     missingBody: 'This artifact is no longer in the local registry.'
   },
 
+  memory: {
+    title: 'Memory',
+    frozenHint: "Edits apply to new sessions; the current session's prompt is frozen by design.",
+    groupCommon: 'Common',
+    groupProjects: 'Projects',
+    agentMemory: 'Agent memory',
+    userProfile: 'User profile',
+    save: 'Save',
+    saved: 'Memory saved',
+    saveFailed: 'Could not save memory',
+    overLimit: 'Content exceeds the character limit',
+    retry: 'Retry',
+    loadFailed: 'Could not load memory files.'
+  },
+
   sidebar: {
     gatewayGroups: {
       grouping: 'Gateway & profile',
@@ -2792,7 +2807,9 @@ export const en: Translations = {
       capabilities: 'Capabilities',
       messaging: 'Messaging',
       artifacts: 'Artifacts',
-      cron: 'Scheduled jobs'
+      memory: 'Memory',
+      cron: 'Scheduled jobs',
+      'session-import': 'Import session'
     },
     searchAria: 'Search sessions',
     searchPlaceholder: 'Search sessions…',

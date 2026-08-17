@@ -123,12 +123,15 @@ export interface HandoffFailResponse {
 }
 
 export type SidebarNavId =
+export type SidebarNavId =
   | 'artifacts'
   | 'capabilities'
   | 'command-center'
   | 'cron'
+  | 'memory'
   | 'messaging'
   | 'new-session'
+  | 'session-import'
   | 'settings'
 
 export interface SidebarNavItem {

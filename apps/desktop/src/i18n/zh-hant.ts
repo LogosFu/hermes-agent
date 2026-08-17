@@ -2274,6 +2274,21 @@ export const zhHant = defineLocale({
     missingBody: '此產物已不在本機註冊表中。'
   },
 
+  memory: {
+    title: '記憶',
+    frozenHint: '編輯對新工作階段生效；目前工作階段的提示詞按設計凍結。',
+    groupCommon: '共用',
+    groupProjects: '專案',
+    agentMemory: 'Agent 記憶',
+    userProfile: '使用者檔案',
+    save: '儲存',
+    saved: '記憶已儲存',
+    saveFailed: '記憶儲存失敗',
+    overLimit: '內容超過字元上限',
+    retry: '重試',
+    loadFailed: '記憶檔案載入失敗。'
+  },
+
   sidebar: {
     gatewayGroups: {
       grouping: '閘道與設定檔',
@@ -2291,7 +2306,9 @@ export const zhHant = defineLocale({
       capabilities: '技能與工具',
       messaging: '訊息平台',
       artifacts: '成品',
-      cron: '排程工作'
+      memory: '記憶',
+      cron: '排程工作',
+      'session-import': '匯入工作階段'
     },
     searchAria: '搜尋工作階段',
     searchPlaceholder: '搜尋工作階段…',

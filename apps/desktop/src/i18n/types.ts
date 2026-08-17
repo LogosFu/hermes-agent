@@ -2346,6 +2346,21 @@ export interface Translations {
     missingBody: string
   }
 
+  memory: {
+    title: string
+    frozenHint: string
+    groupCommon: string
+    groupProjects: string
+    agentMemory: string
+    userProfile: string
+    save: string
+    saved: string
+    saveFailed: string
+    overLimit: string
+    retry: string
+    loadFailed: string
+  }
+
   sidebar: {
     gatewayGroups: {
       grouping: string
