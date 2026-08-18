@@ -2789,6 +2789,21 @@ export const en: Translations = {
     loadFailed: 'Could not load memory files.'
   },
 
+  tasks: {
+    title: 'Tasks',
+    empty: 'No background tasks running.',
+    running: 'Running',
+    exited: 'Exited',
+    exitCode: code => (code === null ? 'Exited' : `Exit code ${code}`),
+    noProject: 'No project',
+    viewBrief: 'View task brief',
+    hideBrief: 'Hide task brief',
+    briefLoading: 'Loading brief…',
+    briefFailed: 'Could not load the task brief.',
+    retry: 'Retry',
+    loadFailed: 'Could not load processes.'
+  },
+
   sidebar: {
     gatewayGroups: {
       grouping: 'Gateway & profile',
@@ -2808,6 +2823,7 @@ export const en: Translations = {
       messaging: 'Messaging',
       artifacts: 'Artifacts',
       memory: 'Memory',
+      tasks: 'Tasks',
       cron: 'Scheduled jobs',
       'session-import': 'Import session'
     },

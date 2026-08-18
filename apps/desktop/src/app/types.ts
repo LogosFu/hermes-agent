@@ -123,7 +123,6 @@ export interface HandoffFailResponse {
 }
 
 export type SidebarNavId =
-export type SidebarNavId =
   | 'artifacts'
   | 'capabilities'
   | 'command-center'
@@ -133,6 +132,7 @@ export type SidebarNavId =
   | 'new-session'
   | 'session-import'
   | 'settings'
+  | 'tasks'
 
 export interface SidebarNavItem {
   /** Built-in view id, or a contributed row's namespaced contribution id. */

@@ -2289,6 +2289,21 @@ export const zhHant = defineLocale({
     loadFailed: '記憶檔案載入失敗。'
   },
 
+  tasks: {
+    title: '任務',
+    empty: '目前沒有執行中的任務。',
+    running: '執行中',
+    exited: '已結束',
+    exitCode: code => (code === null ? '已結束' : `結束代碼 ${code}`),
+    noProject: '無專案',
+    viewBrief: '檢視任務書',
+    hideBrief: '收起任務書',
+    briefLoading: '任務書載入中…',
+    briefFailed: '任務書載入失敗。',
+    retry: '重試',
+    loadFailed: '任務清單載入失敗。'
+  },
+
   sidebar: {
     gatewayGroups: {
       grouping: '閘道與設定檔',
@@ -2307,6 +2322,7 @@ export const zhHant = defineLocale({
       messaging: '訊息平台',
       artifacts: '成品',
       memory: '記憶',
+      tasks: '任務',
       cron: '排程工作',
       'session-import': '匯入工作階段'
     },

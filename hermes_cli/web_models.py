@@ -391,6 +391,16 @@ class MemoryFileUpdate(BaseModel):
     project_id: Optional[str] = None
     content: str = ""
 
+
+class ProcessTitleItem(BaseModel):
+    id: str
+    command: str = ""
+
+
+class ProcessTitlesRequest(BaseModel):
+    items: List[ProcessTitleItem] = []
+
+
 class BackupRequest(BaseModel):
     output: Optional[str] = None  # defaults to a timestamped zip in the home dir
 

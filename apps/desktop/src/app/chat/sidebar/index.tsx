@@ -142,7 +142,8 @@ import {
   MEMORY_ROUTE,
   MESSAGING_ROUTE,
   SIDEBAR_NAV_AREA,
-  type SidebarNavContribution
+  type SidebarNavContribution,
+  TASKS_ROUTE
 } from '../../routes'
 import type { SidebarNavItem } from '../../types'
 import { type NewSessionSplitHandler, startNewSessionDrag } from '../new-session-drag'
@@ -233,6 +234,12 @@ const SIDEBAR_NAV: SidebarNavItem[] = [
     label: '',
     icon: props => <Codicon name="notebook" {...props} />,
     route: MEMORY_ROUTE
+  },
+  {
+    id: 'tasks',
+    label: '',
+    icon: props => <Codicon name="pulse" {...props} />,
+    route: TASKS_ROUTE
   },
   {
     id: 'cron',
@@ -1528,6 +1535,7 @@ export function ChatSidebar({
                   (item.id === 'messaging' && currentView === 'messaging') ||
                   (item.id === 'artifacts' && currentView === 'artifacts') ||
                   (item.id === 'memory' && currentView === 'memory') ||
+                  (item.id === 'tasks' && currentView === 'tasks') ||
                   (item.id === 'cron' && currentView === 'cron') ||
                   // Contributed rows light up at their own route.
                   (currentView === 'extension' && Boolean(item.route) && pathname === item.route)
