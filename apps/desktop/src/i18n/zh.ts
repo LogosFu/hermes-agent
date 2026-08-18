@@ -2499,6 +2499,21 @@ export const zh: Translations = {
     loadFailed: '记忆文件加载失败。'
   },
 
+  tasks: {
+    title: '任务',
+    empty: '当前没有运行中的任务。',
+    running: '运行中',
+    exited: '已结束',
+    exitCode: code => (code === null ? '已结束' : `退出码 ${code}`),
+    noProject: '无项目',
+    viewBrief: '查看任务书',
+    hideBrief: '收起任务书',
+    briefLoading: '任务书加载中…',
+    briefFailed: '任务书加载失败。',
+    retry: '重试',
+    loadFailed: '任务列表加载失败。'
+  },
+
   sidebar: {
     nav: {
       'new-session': '新建会话',
@@ -2506,6 +2521,7 @@ export const zh: Translations = {
       messaging: '消息平台',
       artifacts: '产物',
       memory: '记忆',
+      tasks: '任务',
       cron: '定时任务'
     },
     searchAria: '搜索会话',

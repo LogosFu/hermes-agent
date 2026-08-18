@@ -24,6 +24,7 @@ export * from './api/memory'
 export * from './api/messaging'
 export * from './api/models'
 export * from './api/plugins'
+export * from './api/processes'
 export * from './api/profiles'
 export * from './api/sessions'
 export * from './api/skills'
@@ -94,6 +95,10 @@ export type {
   PaginatedSessions,
   PairingResponse,
   PairingUser,
+  ProcessBriefResponse,
+  ProcessEntry,
+  ProcessesResponse,
+  ProcessTitlesResponse,
   ProfileCreatePayload,
   ProfileDesktopOverlay,
   ProfileInfo,

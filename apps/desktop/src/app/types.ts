@@ -163,7 +163,7 @@ export type CommandDispatchResponse =
   | PrefillCommandDispatchResponse
 
 export type SidebarNavId =
-  'artifacts' | 'command-center' | 'cron' | 'memory' | 'messaging' | 'new-session' | 'settings' | 'skills'
+  'artifacts' | 'command-center' | 'cron' | 'memory' | 'messaging' | 'new-session' | 'settings' | 'skills' | 'tasks'
 
 export interface SidebarNavItem {
   /** Built-in view id, or a contributed row's namespaced contribution id. */

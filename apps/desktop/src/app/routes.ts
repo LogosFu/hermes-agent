@@ -15,6 +15,7 @@ export const MESSAGING_ROUTE = '/messaging'
 export const WEBHOOKS_ROUTE = '/webhooks'
 export const ARTIFACTS_ROUTE = '/artifacts'
 export const MEMORY_ROUTE = '/memory'
+export const TASKS_ROUTE = '/tasks'
 export const CRON_ROUTE = '/cron'
 export const PROFILES_ROUTE = '/profiles'
 export const AGENTS_ROUTE = '/agents'
@@ -37,6 +38,7 @@ export type AppView =
   | 'settings'
   | 'skills'
   | 'starmap'
+  | 'tasks'
   | 'webhooks'
 
 export type AppRouteId =
@@ -51,6 +53,7 @@ export type AppRouteId =
   | 'settings'
   | 'skills'
   | 'starmap'
+  | 'tasks'
   | 'webhooks'
 
 export interface AppRoute {
@@ -68,6 +71,7 @@ export const APP_ROUTES = [
   { id: 'webhooks', path: WEBHOOKS_ROUTE, view: 'webhooks' },
   { id: 'artifacts', path: ARTIFACTS_ROUTE, view: 'artifacts' },
   { id: 'memory', path: MEMORY_ROUTE, view: 'memory' },
+  { id: 'tasks', path: TASKS_ROUTE, view: 'tasks' },
   { id: 'cron', path: CRON_ROUTE, view: 'cron' },
   { id: 'profiles', path: PROFILES_ROUTE, view: 'profiles' },
   { id: 'agents', path: AGENTS_ROUTE, view: 'agents' },

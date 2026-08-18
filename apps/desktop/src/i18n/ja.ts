@@ -2007,6 +2007,21 @@ export const ja = defineLocale({
     loadFailed: 'メモリファイルを読み込めませんでした。'
   },
 
+  tasks: {
+    title: 'タスク',
+    empty: '実行中のバックグラウンドタスクはありません。',
+    running: '実行中',
+    exited: '終了',
+    exitCode: code => (code === null ? '終了' : `終了コード ${code}`),
+    noProject: 'プロジェクトなし',
+    viewBrief: 'タスクブリーフを表示',
+    hideBrief: 'タスクブリーフを隠す',
+    briefLoading: 'ブリーフを読み込み中…',
+    briefFailed: 'タスクブリーフを読み込めませんでした。',
+    retry: '再試行',
+    loadFailed: 'タスク一覧を読み込めませんでした。'
+  },
+
   sidebar: {
     nav: {
       'new-session': '新しいセッション',
@@ -2014,6 +2029,7 @@ export const ja = defineLocale({
       messaging: 'メッセージング',
       artifacts: 'アーティファクト',
       memory: 'メモリ',
+      tasks: 'タスク',
       cron: 'スケジュール済みジョブ'
     },
     searchAria: 'セッションを検索',

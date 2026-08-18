@@ -1986,6 +1986,21 @@ export interface Translations {
     loadFailed: string
   }
 
+  tasks: {
+    title: string
+    empty: string
+    running: string
+    exited: string
+    exitCode: (code: number | null) => string
+    noProject: string
+    viewBrief: string
+    hideBrief: string
+    briefLoading: string
+    briefFailed: string
+    retry: string
+    loadFailed: string
+  }
+
   sidebar: {
     nav: Record<string, string>
     searchAria: string

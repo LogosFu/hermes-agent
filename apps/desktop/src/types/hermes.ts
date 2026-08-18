@@ -1641,6 +1641,39 @@ export interface MemoryFilesResponse {
   files: MemoryFileEntry[]
 }
 
+/** `GET /api/processes` — one tracked background process per entry.
+ *  `brief_path` is present only when the command references an existing
+ *  `@file` task brief; `project_*` are null when the cwd matches no
+ *  registered project. */
+export interface ProcessEntry {
+  id: string
+  command: string
+  cwd: string | null
+  project_id: string | null
+  project_name: string | null
+  started_at: number
+  duration_sec: number
+  exited: boolean
+  exit_code: number | null
+  brief_path: string | null
+  output_tail: string
+}
+
+export interface ProcessesResponse {
+  processes: ProcessEntry[]
+}
+
+/** `POST /api/processes/titles` — per-process AI (or fallback) title. */
+export interface ProcessTitlesResponse {
+  titles: Record<string, string>
+}
+
+/** `GET /api/processes/{id}/brief` — the process's `@file` brief content. */
+export interface ProcessBriefResponse {
+  path: string
+  content: string
+}
+
 /** `GET /api/curator` — background skill-curator status. */
 export interface CuratorStatusResponse {
   enabled: boolean
