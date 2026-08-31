@@ -940,7 +940,6 @@ class TestProjectMemorySystemPromptEndToEnd:
         )
         with (
             _patch("run_agent.load_soul_md", return_value=""),
-            _patch("run_agent.build_nous_subscription_prompt", return_value=""),
             _patch("run_agent.build_environment_hints", return_value=""),
             _patch("run_agent.build_context_files_prompt", return_value=""),
         ):
@@ -988,7 +987,6 @@ class TestProjectMemorySystemPromptEndToEnd:
         )
         with (
             _patch("run_agent.load_soul_md", return_value=""),
-            _patch("run_agent.build_nous_subscription_prompt", return_value=""),
             _patch("run_agent.build_environment_hints", return_value=""),
             _patch("run_agent.build_context_files_prompt", return_value=""),
         ):
